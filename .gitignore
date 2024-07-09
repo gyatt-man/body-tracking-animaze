@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Body Tracking for Animaze</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #000;
+        }
+        video {
+            display: none;
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <video id="video" width="640" height="480" autoplay></video>
+    <canvas id="output"></canvas>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet"></script>
+    <script>
+        const videoElement = document.getElementById('video');
+        const canvas = document.getElementById('output');
+        const ctx = canvas.getContext('2d');
+
+        async function setupCamera() {
+            videoElement.width = 640;
+            videoElement.height = 480;
+
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: true
+            });
+            videoElement.srcObject = stream;
+
+            return new Promise((resolve) => {
+                videoElement.onloadedmetadata = () => {
+                    resolve(videoElement);
+                };
+            });
+        }
+
+        async function loadAndPredict() {
+            const net = await posenet.load();
+            const video = await setupCamera();
+            video.play();
+
+            canvas.width = video.width;
+            canvas.height = video.height;
+
+            async function poseDetectionFrame() {
+                const pose = await net.estimateSinglePose(video, {
+                    flipHorizontal: false
+                });
+
+                ctx.clearRect(0, 0, video.width, video.height);
+                ctx.drawImage(video, 0, 0, video.width, video.height);
+
+                drawKeypoints(pose.keypoints);
+                drawSkeleton(pose.keypoints);
+
+                requestAnimationFrame(poseDetectionFrame);
+            }
+
+            poseDetectionFrame();
+        }
+
+        function drawKeypoints(keypoints) {
+            keypoints.forEach(point => {
+                if (point.score > 0.5) {
+                    const { y, x } = point.position;
+                    ctx.beginPath();
+                    ctx.arc(x, y, 5, 0, 2 * Math.PI);
+                    ctx.fillStyle = 'red';
+                    ctx.fill();
+                }
+            });
+        }
+
+        function drawSkeleton(keypoints) {
+            const adjacentKeyPoints = posenet.getAdjacentKeyPoints(keypoints, 0.5);
+
+            adjacentKeyPoints.forEach((keypoints) => {
+                const [firstKeypoint, secondKeypoint] = keypoints;
+
+                ctx.beginPath();
+                ctx.moveTo(firstKeypoint.position.x, firstKeypoint.position.y);
+                ctx.lineTo(secondKeypoint.position.x, secondKeypoint.position.y);
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = 'red';
+                ctx.stroke();
+            });
+        }
+
+        loadAndPredict();
+    </script>
+</body>
+</html>
